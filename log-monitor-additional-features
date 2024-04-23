@@ -1,0 +1,94 @@
+#!/bin/bash
+#Author:Prasad C Zungare
+#Version : 1
+#Date : 24/04/2024
+#This script is with additional features like Alert emails , multiple log files.
+############
+
+# Email configuration
+EMAIL_ADDRESS="your_email@example.com"
+EMAIL_SUBJECT="Log Alert"
+EMAIL_BODY="An alert has been triggered. Please check the logs."
+
+# Function to handle cleanup
+cleanup() {
+    echo "Exiting..."
+    exit 0
+}
+
+# Trap Ctrl+C to gracefully stop script
+trap cleanup SIGINT
+
+# Define log files and error log files
+LOG_FILES=(
+    "/var/log/auth.log"
+    "/var/log/syslog"
+    "/var/log/nginx/error.log"
+)
+
+ERROR_LOG="error.log"
+
+# Function to send email alert
+send_email_alert() {
+    echo "$EMAIL_BODY" | mail -s "$EMAIL_SUBJECT" "$EMAIL_ADDRESS"
+}
+
+# Function to monitor log files and append ERROR and WARNING entries to error log
+monitor_logs() {
+    declare -A error_counts
+    declare -A warning_counts
+
+    # Initialize error and warning counts for each log file
+    for logfile in "${LOG_FILES[@]}"; do
+        error_counts["$logfile"]=0
+        warning_counts["$logfile"]=0
+    done
+
+    # Continuously monitor log files
+    tail -n 0 -f "${LOG_FILES[@]}" | while read -r line; do
+        echo "$line"  # Print each new log entry
+
+        # Check each log file for ERROR and WARNING patterns
+        for logfile in "${LOG_FILES[@]}"; do
+            if grep -q "ERROR" <<< "$line" && [[ "$line" == *"$logfile"* ]]; then
+                ((error_counts["$logfile"]++))
+                # Send email alert if ERROR count exceeds threshold
+                if (( error_counts["$logfile"] == 10 )); then
+                    send_email_alert
+                fi
+            fi
+            if grep -q "WARNING" <<< "$line" && [[ "$line" == *"$logfile"* ]]; then
+                ((warning_counts["$logfile"]++))
+                # Send email alert if WARNING count exceeds threshold
+                if (( warning_counts["$logfile"] == 10 )); then
+                    send_email_alert
+                fi
+            fi
+        done
+
+        # Append "ERROR" and "WARNING" entries to error log
+        if grep -q "ERROR\|WARNING" <<< "$line"; then
+            echo "$line" >> "$ERROR_LOG"
+        fi
+
+        # Generate summary report after every 10 lines
+        for logfile in "${LOG_FILES[@]}"; do
+            if (( error_counts["$logfile"] % 10 == 0 )) || (( warning_counts["$logfile"] % 10 == 0 )); then
+                echo "Summary Report for $logfile:"
+                echo "Total ERROR count: ${error_counts["$logfile"]}"
+                echo "Total WARNING count: ${warning_counts["$logfile"]}"
+            fi
+        done
+    done
+}
+
+# Main function
+main() {
+    echo "Starting log monitoring..."
+
+    # Call the monitor_logs function
+    monitor_logs
+}
+
+# Execute the main function
+main
