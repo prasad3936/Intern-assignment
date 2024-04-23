@@ -28,6 +28,4 @@ To test the script:
 3. Monitor the script output for new log entries, error counts, and warning counts.
 4. Verify that the script generates summary reports after every 10 lines.
 
-## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
