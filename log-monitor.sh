@@ -1,7 +1,10 @@
 #!/bin/bash
-
-# Define the log file to monitor
-LOG_FILE="path/to/logfile.log"
+##################
+#Author:Prasad C Zungare 
+#Date : 23/04/2024
+#version : 1
+#This Script automates the analysis and monitoring of log files
+##########################
 
 # Function to handle cleanup
 cleanup() {
@@ -9,30 +12,41 @@ cleanup() {
     exit 0
 }
 
-# Trap Ctrl+C to gracefully stop monitoring
+# Trap Ctrl+C to gracefully stop script
 trap cleanup SIGINT
 
-# Function to monitor the log file
+# Define log file and error log file
+LOG_FILE="/var/log/auth.log"
+ERROR_LOG="error.log"
+
+# Function to monitor log file and append ERROR and WARNING entries to error log
 monitor_log() {
     error_count=0
     warning_count=0
 
+    # Continuously monitor log file
     tail -n 0 -f "$LOG_FILE" | while read -r line; do
-        # Perform log analysis here (count occurrences, generate reports, etc.)
-        echo "$line"  # Example: Print each new log entry
+        echo "$line"  # Print each new log entry
 
-        # Increment error count if line contains "error"
-        if [[ "$line" == *error* ]]; then
+        # Count occurrences of "ERROR" and "WARNING"
+        if [[ "$line" == *ERROR* ]]; then
             ((error_count++))
         fi
-
-        # Increment warning count if line contains "warning"
-        if [[ "$line" == *warning* ]]; then
+        if [[ "$line" == *WARNING* ]]; then
             ((warning_count++))
         fi
 
-        # Print error and warning counts after each iteration
-        echo "Error count: $error_count, Warning count: $warning_count"
+        # Append "ERROR" and "WARNING" entries to error log
+        if [[ "$line" == *ERROR* ]] || [[ "$line" == *WARNING* ]]; then
+            echo "$line" >> "$ERROR_LOG"
+        fi
+
+        # Generate summary report after every 10 lines
+        if (( error_count % 10 == 0 )) || (( warning_count % 10 == 0 )); then
+            echo "Summary Report:"
+            echo "Total ERROR count: $error_count"
+            echo "Total WARNING count: $warning_count"
+        fi
     done
 }
 
