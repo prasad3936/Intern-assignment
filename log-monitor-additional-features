@@ -5,11 +5,6 @@
 #This script is with additional features like Alert emails , multiple log files.
 ############
 
-# Email configuration
-EMAIL_ADDRESS="your_email@example.com"
-EMAIL_SUBJECT="Log Alert"
-EMAIL_BODY="An alert has been triggered. Please check the logs."
-
 # Function to handle cleanup
 cleanup() {
     echo "Exiting..."
@@ -19,66 +14,60 @@ cleanup() {
 # Trap Ctrl+C to gracefully stop script
 trap cleanup SIGINT
 
-# Define log files and error log files
-LOG_FILES=(
-    "/var/log/auth.log"
-    "/var/log/syslog"
-    "/var/log/nginx/error.log"
-)
+# Function to rotate error log file
+rotate_log() {
+    local log_file="$1"
+    local error_log="error_$log_file.log"
+    local max_size_mb=5  # Maximum size of error log file in MB
 
-ERROR_LOG="error.log"
-
-# Function to send email alert
-send_email_alert() {
-    echo "$EMAIL_BODY" | mail -s "$EMAIL_SUBJECT" "$EMAIL_ADDRESS"
+    # Check if error log file exists and its size exceeds threshold
+    if [ -f "$error_log" ] && [ $(du -m "$error_log" | awk '{print $1}') -gt "$max_size_mb" ]; then
+        echo "Rotating $error_log..."
+        mv "$error_log" "${error_log}.old"
+        touch "$error_log"
+        echo "Log file rotated."
+    fi
 }
 
-# Function to monitor log files and append ERROR and WARNING entries to error log
-monitor_logs() {
+# Function to monitor log file and append ERROR and WARNING entries to error log
+monitor_log() {
+    local log_file="$1"
+    local error_log="error_$log_file.log"
+
     declare -A error_counts
     declare -A warning_counts
 
-    # Initialize error and warning counts for each log file
-    for logfile in "${LOG_FILES[@]}"; do
-        error_counts["$logfile"]=0
-        warning_counts["$logfile"]=0
-    done
+    # Initialize error and warning counts
+    error_counts["$log_file"]=0
+    warning_counts["$log_file"]=0
 
-    # Continuously monitor log files
-    tail -n 0 -f "${LOG_FILES[@]}" | while read -r line; do
+    # Continuously monitor log file
+    tail -n 0 -f "$log_file" | while read -r line; do
         echo "$line"  # Print each new log entry
 
-        # Check each log file for ERROR and WARNING patterns
-        for logfile in "${LOG_FILES[@]}"; do
-            if grep -q "ERROR" <<< "$line" && [[ "$line" == *"$logfile"* ]]; then
-                ((error_counts["$logfile"]++))
-                # Send email alert if ERROR count exceeds threshold
-                if (( error_counts["$logfile"] == 10 )); then
-                    send_email_alert
-                fi
-            fi
-            if grep -q "WARNING" <<< "$line" && [[ "$line" == *"$logfile"* ]]; then
-                ((warning_counts["$logfile"]++))
-                # Send email alert if WARNING count exceeds threshold
-                if (( warning_counts["$logfile"] == 10 )); then
-                    send_email_alert
-                fi
-            fi
-        done
+        # Check for ERROR and WARNING patterns
+        if grep -q "ERROR" <<< "$line"; then
+            ((error_counts["$log_file"]++))
+        fi
+        if grep -q "WARNING" <<< "$line"; then
+            ((warning_counts["$log_file"]++))
+        fi
 
         # Append "ERROR" and "WARNING" entries to error log
         if grep -q "ERROR\|WARNING" <<< "$line"; then
-            echo "$line" >> "$ERROR_LOG"
+            echo "$line" >> "$error_log"
         fi
 
         # Generate summary report after every 10 lines
-        for logfile in "${LOG_FILES[@]}"; do
-            if (( error_counts["$logfile"] % 10 == 0 )) || (( warning_counts["$logfile"] % 10 == 0 )); then
-                echo "Summary Report for $logfile:"
-                echo "Total ERROR count: ${error_counts["$logfile"]}"
-                echo "Total WARNING count: ${warning_counts["$logfile"]}"
-            fi
-        done
+        if (( error_counts["$log_file"] % 10 == 0 )) || (( warning_counts["$log_file"] % 10 == 0 )); then
+            echo "Summary Report for $log_file:"
+            echo "Total ERROR count: ${error_counts["$log_file"]}"
+            echo "Total WARNING count: ${warning_counts["$log_file"]}"
+            echo "-----------------------------------"
+        fi
+
+        # Rotate error log file
+        rotate_log "$log_file"
     done
 }
 
@@ -86,9 +75,22 @@ monitor_logs() {
 main() {
     echo "Starting log monitoring..."
 
-    # Call the monitor_logs function
-    monitor_logs
+    # Check if log files are provided as arguments
+    if [ "$#" -eq 0 ]; then
+        echo "No log files provided. Exiting..."
+        exit 1
+    fi
+
+    # Monitor each log file
+    for log_file in "$@"; do
+        monitor_log "$log_file" &
+    done
+
+    # Wait for all background processes to finish
+    wait
 }
 
-# Execute the main function
-main
+# Execute the main function with provided log files as arguments
+main "$@"
+
+
