@@ -27,7 +27,7 @@ monitor_log() {
     # Continuously monitor log file
     tail -n 0 -f "$LOG_FILE" | while read -r line; do
         echo "$line"  # Print each new log entry
-
+        echo "#####################################"
         # Count occurrences of "ERROR" and "WARNING"
         if [[ "$line" == *ERROR* ]]; then
             ((error_count++))
